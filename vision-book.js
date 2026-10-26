@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Vision Book — Modern Reader
 // @namespace    suresh.visionbook
-// @version      1.0
+// @version      1.1
 // @description  Restyles visionbook.mit.edu (Quarto): figure cards, boxed equations, better typography, reading progress, figure zoom. Follows the site's own light/dark toggle.
 // @match        https://visionbook.mit.edu/*
 // @run-at       document-end
@@ -60,14 +60,12 @@
     font-family:Inter,sans-serif;font-size:.78em;vertical-align:.08em}
 
   /* figures as cards */
-  #quarto-document-content .quarto-figure, #quarto-document-content figure.figure,
-  #quarto-document-content div.quarto-float{
-    background:var(--vb-paper);border:1px solid var(--vb-rule);border-radius:14px;
-    padding:18px 18px 12px;margin:2em 0!important;box-shadow:0 10px 30px -18px var(--vb-shadow)}
-  #quarto-document-content .quarto-figure figure.figure,
-  #quarto-document-content div.quarto-float figure,
-  #quarto-document-content .quarto-figure .quarto-figure{
-    background:none;border:0;box-shadow:none;padding:0;margin:0!important}
+  .vb-card{background:var(--vb-paper)!important;border:1px solid var(--vb-rule)!important;border-radius:14px;
+    padding:18px 18px 12px!important;margin:2em 0!important;box-shadow:0 10px 30px -18px var(--vb-shadow)}
+  .vb-subcard{background:var(--vb-paper)!important;border:1px solid var(--vb-rule)!important;border-radius:12px;
+    padding:12px 12px 6px!important}
+  .vb-card .vb-subcard{border-color:transparent!important;padding:4px!important}
+  .margin-caption, figcaption.margin-caption{border-top:0!important;padding-top:0!important}
   #quarto-document-content figure img, #quarto-document-content .quarto-figure img{
     border-radius:8px;cursor:zoom-in;max-width:100%;height:auto}
   body.quarto-dark #quarto-document-content figure img{background:#f4f2ec;padding:4px}
@@ -182,6 +180,33 @@
       });
   }
   labelCaptions();
+
+  /* ---------- figure cards: only around figures that fit the text column ---------- */
+  function cardFigures() {
+    const root = document.getElementById('quarto-document-content');
+    if (!root) return;
+    const p = root.querySelector(':scope > section p, :scope > p');
+    const colW = p ? p.getBoundingClientRect().width : root.getBoundingClientRect().width;
+    const SEL = '.quarto-float, .quarto-figure, figure.figure';
+
+    root.querySelectorAll(SEL).forEach(el => {
+      el.classList.remove('vb-card', 'vb-subcard');
+    });
+    root.querySelectorAll(SEL).forEach(el => {
+      const outer = el.parentElement && el.parentElement.closest(SEL);
+      const isSub = el.closest('.quarto-subfloat-fig, .quarto-layout-cell') && outer;
+      const wide = el.getBoundingClientRect().width > colW * 1.12 ||
+                   el.matches('.page-columns, .page-full, [class*="column-page"], [class*="column-screen"]') ||
+                   el.querySelector(':scope > .margin-caption, :scope > figcaption.margin-caption, :scope > figure > figcaption.margin-caption');
+      if (isSub) { el.classList.add('vb-subcard'); return; }
+      if (outer && outer.classList.contains('vb-card')) return;     // already inside a card
+      if (outer && !wide) return;                                     // let the outermost fitting one be the card
+      if (!wide) el.classList.add('vb-card');
+    });
+  }
+  cardFigures();
+  addEventListener('load', cardFigures);
+  addEventListener('resize', () => { clearTimeout(cardFigures.t); cardFigures.t = setTimeout(cardFigures, 200); });
 
   /* ---------- click figure to zoom ---------- */
   const lb = document.createElement('div');
