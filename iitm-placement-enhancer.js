@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         IITM Placement Portal — Clean Dashboard
 // @namespace    suresh.iitm.placement
-// @version      2.3
-// @description  Flash-free restyle of placement.iitm.ac.in/students*: dark mode, live filters, sortable columns, always-visible buttons.
+// @version      2.4
+// @description  Flash-free restyle of placement.iitm.ac.in/students*: dark mode, live filters, sortable columns, always-visible buttons, and registering without losing your place.
 // @match        https://placement.iitm.ac.in/students*
 // @run-at       document-start
 // @grant        none
@@ -170,6 +170,10 @@
   /* any other white panel found by the dark-mode sweep (see sweepWhitePanels) */
   html.x-dark .x-flip{background-color:var(--x-surface)!important;color:var(--x-ink)!important}
   .fixed-table-loading{display:none!important}
+  .x-toast{position:fixed;right:18px;bottom:18px;z-index:2000;max-width:420px;padding:12px 16px;border-radius:10px;
+    font-size:.88rem;font-weight:600;background:var(--x-surface);color:var(--x-ink);border:1px solid var(--x-border);
+    border-left:4px solid #10b981;box-shadow:var(--x-shadow)}
+  .x-toast.bad{border-left-color:#ef4444}
   `;
 
   function boot() {
@@ -311,6 +315,8 @@
    * 4. Filters, sorting, toolbar
    * ------------------------------------------------------------------ */
   const state = { q: '', status: 'all', cat: 'all', sort: 'sl', dir: 1 };
+  const pageOf = u => +((u.match(/[?&]page=(\d+)/) || [])[1]) || 1;
+  const loadedPages = new Set([pageOf(location.search)]);   // pages currently merged into the table
   const DEFAULT_DIR = { sl: 1, company: 1, role: 1, credits: -1, reg: -1, deadline: 1, ppt: 1, test: 1 };
   const SORTABLE_TH = { 0: 'sl', 1: 'company', 2: 'role', 3: 'credits', 5: 'deadline', 6: 'ppt', 7: 'test' };
 
@@ -459,7 +465,8 @@
       try {
         const doc = new DOMParser().parseFromString(await (await fetch(url, { credentials: 'same-origin' })).text(), 'text/html');
         const t = Array.from(doc.querySelectorAll('table.table')).find(x => x.querySelectorAll('thead th').length >= 11);
-        const pageNo = +(url.match(/page=(\d+)/) || [])[1] || 1;
+        const pageNo = pageOf(url);
+        if (t) loadedPages.add(pageNo);
         if (t) dataRows(t).forEach((tr, k) => {
           const copy = document.importNode(tr, true);
           copy.dataset.xSeq = pageNo * 1000 + k;
@@ -531,6 +538,14 @@
     if (nav) root().style.setProperty('--x-nav-h', nav.offsetHeight + 'px');
   }
 
+  function setCredits(total, used, bal) {
+    const set = (id, v) => { const e = document.getElementById(id); if (e) e.textContent = v; };
+    set('x-c-total', total); set('x-c-used', used); set('x-c-bal', bal);
+    const bar = document.getElementById('x-c-bar'), pct = Math.min(100, used / total * 100);
+    if (bar) bar.style.width = pct + '%';
+    const m = document.getElementById('x-c-meter'); if (m) m.title = Math.round(pct) + '% used';
+  }
+
   function enhanceCredits() {
     const row = $('.row.text-danger');
     if (!row || row.dataset.xDone) return;
@@ -541,10 +556,11 @@
     const btns = $$('button', row);
     row.className = 'x-hud';
     row.innerHTML = `
-      <span class="x-stat">Total <b>${total}</b></span>
-      <span class="x-stat">Used <b>${used}</b></span>
-      <span class="x-stat">Balance <b style="color:var(--x-ok)">${bal}</b></span>
-      <span class="x-meter" title="${Math.round(used / total * 100)}% used"><i style="width:${Math.min(100, used / total * 100)}%"></i></span>`;
+      <span class="x-stat">Total <b id="x-c-total"></b></span>
+      <span class="x-stat">Used <b id="x-c-used"></b></span>
+      <span class="x-stat">Balance <b id="x-c-bal" style="color:var(--x-ok)"></b></span>
+      <span class="x-meter" id="x-c-meter"><i id="x-c-bar"></i></span>`;
+    setCredits(total, used, bal);
     btns.forEach(b => { b.classList.add('x-chip'); row.appendChild(b); });
   }
 
@@ -558,6 +574,98 @@
         td.innerHTML = `<a class="x-btn x-apply" href="${t}" target="_blank" rel="noopener" title="${t}">🔗 Open ↗</a>`;
       }
     });
+  }
+
+  /* ------------------------------------------------------------------ *
+   * 5b. Register / update resume WITHOUT leaving the page
+   *     The portal does: applyresume() -> $('#apply_resume').submit() -> full POST -> redirect to page 1.
+   *     We send the same POST with fetch(), then re-read the pages already in the table and swap
+   *     the rows in place, so page number, merged pages, filters, sort and scroll all stay put.
+   * ------------------------------------------------------------------ */
+  function toast(msg, bad) {
+    const t = document.createElement('div');
+    t.className = 'x-toast' + (bad ? ' bad' : '');
+    t.textContent = msg;
+    document.body.appendChild(t);
+    setTimeout(() => t.remove(), bad ? 6000 : 3500);
+  }
+
+  // message the portal wants to show after saving (flash alert / bootbox), if any
+  function flashMessage(html) {
+    const doc = new DOMParser().parseFromString(html, 'text/html');
+    const a = doc.querySelector('.alert-success,.alert-danger,.alert-info,.alert-primary');
+    let msg = a ? a.textContent : '';
+    if (!msg) {
+      const js = Array.from(doc.scripts).map(x => x.textContent).join('\n');
+      msg = (js.match(/(?:bootbox\.alert|alert)\(\s*(["'`])((?:(?!\1)[\s\S])*?)\1/) || [])[2] || '';
+    }
+    return msg.replace(/\s+/g, ' ').trim().slice(0, 160);
+  }
+
+  async function refreshTable() {
+    const table = mainTable(); if (!table) return;
+    const search = $('#register_company_list');
+    const filtered = !!search && ['startdate', 'enddate', 'selectfor', 'keywords'].some(n => search.elements[n] && search.elements[n].value);
+    const fresh = [];
+    let creditsText = '';
+    for (const p of Array.from(loadedPages).sort((a, b) => a - b)) {
+      const url = (filtered ? search.action : location.pathname) + (p > 1 ? '?page=' + p : '');
+      const res = await fetch(url, filtered ? { method: 'POST', body: new FormData(search), credentials: 'same-origin' }
+                                           : { credentials: 'same-origin' });
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      const doc = new DOMParser().parseFromString(await res.text(), 'text/html');
+      const t = Array.from(doc.querySelectorAll('table.table')).find(x => x.querySelectorAll('thead th').length >= 11);
+      if (!t) throw new Error('table not found in response');
+      dataRows(t).forEach((tr, k) => { const c = document.importNode(tr, true); c.dataset.xSeq = p * 1000 + k; fresh.push(c); });
+      const cr = doc.querySelector('.row.text-danger'); if (cr && !creditsText) creditsText = cr.textContent;
+    }
+    const tbody = table.tBodies[0];
+    dataRows(table).forEach(r => r.remove());
+    fresh.forEach(tr => tbody.appendChild(tr));
+    dataRows(table).forEach(decorate);
+    fillCategories(table);
+    applyView(table);                       // same filters + sort as before
+    const g = re => parseInt((creditsText.match(re) || [])[1], 10);
+    const total = g(/Total Credits\s*:\s*(\d+)/i), used = g(/Used Credits\s*:\s*(\d+)/i), bal = g(/Balance Credits\s*:\s*(\d+)/i);
+    if (!isNaN(total) && !isNaN(used)) setCredits(total, used, isNaN(bal) ? total - used : bal);
+  }
+
+  async function saveInPlace(form) {
+    if (!mainTable()) { form.dataset.xNative = '1'; return nativeSubmit.call(form); }   // other pages: portal's normal flow
+    let text;
+    try {
+      const method = (form.method || 'get').toUpperCase();
+      const fd = new FormData(form);
+      const res = method === 'GET'
+        ? await fetch(form.action + (form.action.includes('?') ? '&' : '?') + new URLSearchParams(fd), { credentials: 'same-origin' })
+        : await fetch(form.action, { method, body: fd, credentials: 'same-origin' });
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      text = await res.text();
+    } catch (err) {                          // couldn't save: do exactly what the portal would have done
+      console.error('[x-placement] in-place save failed, falling back', err);
+      toast('Could not save in place — submitting normally…', true);
+      form.dataset.xNative = '1';
+      setTimeout(() => nativeSubmit.call(form), 700);
+      return;
+    }
+    toast('✓ ' + (flashMessage(text) || 'Saved'));
+    try { await refreshTable(); }
+    catch (err) { console.error('[x-placement] refresh failed', err); toast('Saved, but the table could not be refreshed — reload to see it.', true); }
+  }
+
+  // jQuery's .submit() ends in the native form.submit(), which fires no 'submit' event, so patch both routes
+  const nativeSubmit = HTMLFormElement.prototype.submit;
+  HTMLFormElement.prototype.submit = function () {
+    if (this.id === 'apply_resume' && !this.dataset.xNative) { saveInPlace(this); return; }
+    return nativeSubmit.call(this);
+  };
+  document.addEventListener('submit', e => {
+    if (e.target.id === 'apply_resume' && !e.target.dataset.xNative) { e.preventDefault(); saveInPlace(e.target); }
+  }, true);
+
+  // the popup's X button calls closemodel(), which reloads the whole page; just close the popup
+  function patchClosemodel() {
+    window.closemodel = function () { try { window.jQuery('.modal').modal('hide'); } catch (e) {} };
   }
 
   /* ------------------------------------------------------------------ *
@@ -606,12 +714,13 @@
 
   document.addEventListener('DOMContentLoaded', () => {
     watcher.disconnect(); start();
+    patchClosemodel();                     // after the portal's own scripts have defined it
     let t; // content added later (e.g. the company-profile modal) gets the same treatment
     new MutationObserver(() => { clearTimeout(t); t = setTimeout(sweepWhitePanels, 60); })
       .observe(document.body, { childList: true, subtree: true });
   });
   // idempotent re-runs in case the portal's own scripts touched the DOM afterwards
-  window.addEventListener('load', () => { try { run(); } catch (e) {} reveal(); });
+  window.addEventListener('load', () => { try { run(); } catch (e) {} patchClosemodel(); reveal(); });
   window.addEventListener('resize', () => { try { measureNavbar(); } catch (e) {} });
   setTimeout(() => { started || start(); reveal(); }, REVEAL_FAILSAFE_MS);
 })();
