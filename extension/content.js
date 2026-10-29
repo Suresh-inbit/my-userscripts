@@ -1,5 +1,5 @@
 // IITM Placement Portal — Clean Dashboard (extension build)
-// Generated from iitm-placement-restyle.user.js by build.sh — edit the userscript, not this file.
+// Generated from iitm-placement-enhancer.js by build.sh — edit the userscript, not this file.
 
 (function () {
   'use strict';

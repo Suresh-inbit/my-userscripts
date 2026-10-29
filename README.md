@@ -12,7 +12,7 @@ These are AI generated scripts use at your own risk.
 
 ## IITM Placement Portal — Clean Dashboard
 
-`iitm-placement-restyle.user.js` is the userscript (install it in Tampermonkey as above).
+`iitm-placement-enhancer.js` is the userscript (install it in Tampermonkey as above).
 The same script is also packaged as a Chromium MV3 extension in `extension/`:
 load it via `chrome://extensions` → Developer mode → **Load unpacked** → pick the `extension` folder.
 
