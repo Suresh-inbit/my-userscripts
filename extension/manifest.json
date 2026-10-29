@@ -1,0 +1,14 @@
+{
+  "manifest_version": 3,
+  "name": "IITM Placement Portal — Clean Dashboard",
+  "version": "2.4",
+  "description": "Flash-free restyle of placement.iitm.ac.in/students*: dark mode, live filters, sortable columns, always-visible buttons, and registering without losing your place.",
+  "content_scripts": [
+    {
+      "matches": ["https://placement.iitm.ac.in/students*"],
+      "js": ["content.js"],
+      "run_at": "document_start",
+      "world": "MAIN"
+    }
+  ]
+}
