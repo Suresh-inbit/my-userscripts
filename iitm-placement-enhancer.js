@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         IITM Placement Portal — Clean Dashboard
 // @namespace    suresh.iitm.placement
-// @version      2.4
+// @version      2.5
 // @description  Flash-free restyle of placement.iitm.ac.in/students*: dark mode, live filters, sortable columns, always-visible buttons, and registering without losing your place.
 // @match        https://placement.iitm.ac.in/students*
 // @run-at       document-start
@@ -275,12 +275,15 @@
     td[3].innerHTML = `<span class="x-pill">${i.credits}</span>`;
     td[4].innerHTML = `<span class="x-cat">${i.cat || 'Other'}</span>`;
 
-    // deadline: keep hidden key span, add "Nh left" / "Tomorrow"
-    const hrs = (i.deadline - Date.now()) / 36e5;
-    const due = hrs > 0 && hrs <= 24 ? `<span class="x-due urgent">⏳ ${Math.ceil(hrs)}h left</span>`
-              : hrs > 24 && hrs <= 48 ? `<span class="x-due">Tomorrow</span>` : '';
-    const keySpan = td[5].querySelector('.d-none');
-    td[5].innerHTML = (keySpan ? keySpan.outerHTML : '') + `<div>${cleanText(td[5])}${due ? '<div>' + due + '</div>' : ''}</div>`;
+    // deadline, PPT, test: keep hidden key span, add "Nh left" / "Tomorrow"
+    [[td[5], i.deadline], [td[6], i.ppt], [td[7], i.test]].forEach(([cell, when]) => {
+      if (!isFinite(when)) return;
+      const hrs = (when - Date.now()) / 36e5;
+      const due = hrs > 0 && hrs <= 24 ? `<span class="x-due urgent">⏳ ${Math.ceil(hrs)}h left</span>`
+                : hrs > 24 && hrs <= 48 ? `<span class="x-due">Tomorrow</span>` : '';
+      const keySpan = cell.querySelector('.d-none');
+      cell.innerHTML = (keySpan ? keySpan.outerHTML : '') + `<div>${cleanText(cell)}${due ? '<div>' + due + '</div>' : ''}</div>`;
+    });
 
     // external + whatsapp links -> buttons
     const ext = td[9].querySelector('a');
