@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         IITM Placement Portal — Clean Dashboard
 // @namespace    suresh.iitm.placement
-// @version      2.5
+// @version      2.6
 // @description  Flash-free restyle of placement.iitm.ac.in/students*: dark mode, live filters, sortable columns, always-visible buttons, and registering without losing your place.
 // @match        https://placement.iitm.ac.in/students*
 // @run-at       document-start
@@ -458,18 +458,25 @@
 
   async function loadAllPages(btn) {
     const table = mainTable(); if (!table) return;
-    const urls = Array.from(new Set($$('ul.pagination a.page-link').map(a => a.href).filter(h => /page=\d+/.test(h))));
+    // Long paginations hide middle pages behind "…", so don't fetch only the linked pages:
+    // fetch every page up to the highest number seen (re-checked on each fetched page).
+    const links = r => Array.from(r.querySelectorAll('ul.pagination a.page-link')).map(a => a.href).filter(h => /[?&]page=\d+/.test(h));
+    const lastPage = r => Math.max(0, ...links(r).map(pageOf));
+    const first = links(document)[0];
     btn.disabled = true;
-    if (!urls.length) { btn.textContent = '✓ All pages loaded'; return; }
+    if (!first) { btn.textContent = '✓ All pages loaded'; return; }
+    const urlFor = p => first.replace(/([?&]page=)\d+/, '$1' + p);
     const tbody = table.tBodies[0];
-    let n = 1;
-    for (const url of urls) {
-      btn.textContent = `⏳ Loading page ${++n}…`;
+    let max = lastPage(document), n = loadedPages.size;
+    for (let pageNo = 1; pageNo <= max; pageNo++) {
+      if (loadedPages.has(pageNo)) continue;
+      const url = urlFor(pageNo);
+      btn.textContent = `⏳ Loading page ${pageNo} of ${max}…`;
       try {
         const doc = new DOMParser().parseFromString(await (await fetch(url, { credentials: 'same-origin' })).text(), 'text/html');
         const t = Array.from(doc.querySelectorAll('table.table')).find(x => x.querySelectorAll('thead th').length >= 11);
-        const pageNo = pageOf(url);
-        if (t) loadedPages.add(pageNo);
+        max = Math.max(max, lastPage(doc));
+        if (t) { loadedPages.add(pageNo); n++; }
         if (t) dataRows(t).forEach((tr, k) => {
           const copy = document.importNode(tr, true);
           copy.dataset.xSeq = pageNo * 1000 + k;
