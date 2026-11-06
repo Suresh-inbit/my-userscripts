@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         IITM Placement Portal — Clean Dashboard
 // @namespace    suresh.iitm.placement
-// @version      2.6
+// @version      2.7
 // @description  Flash-free restyle of placement.iitm.ac.in/students*: dark mode, live filters, sortable columns, always-visible buttons, and registering without losing your place.
 // @match        https://placement.iitm.ac.in/students*
 // @run-at       document-start
@@ -174,6 +174,21 @@
     font-size:.88rem;font-weight:600;background:var(--x-surface);color:var(--x-ink);border:1px solid var(--x-border);
     border-left:4px solid #10b981;box-shadow:var(--x-shadow)}
   .x-toast.bad{border-left-color:#ef4444}
+  .x-toast.warn{border-left-color:#f59e0b}
+  .x-toast .x-act{display:flex;gap:6px;margin-top:8px}
+  /* external-form reminders */
+  table.table tbody tr.x-form-pending{background:var(--x-warn-soft)!important}
+  table.table tbody tr.x-form-pending td:first-child{border-left:4px solid #f59e0b!important}
+  .x-form-flag{display:block;width:max-content;margin-top:4px;padding:1px 7px;border-radius:5px;font-size:.72rem;font-weight:700;
+    background:var(--x-warn-soft);color:var(--x-warn);border:1px solid rgba(245,158,11,.45)}
+  .x-chip.x-form-toggle{display:block;margin-top:4px;font-size:.72rem!important;padding:2px 9px!important}
+  .x-chip.x-form-toggle.done{background:var(--x-ok-soft)!important;color:var(--x-ok)!important;border-color:#10b981!important}
+  .x-forms-banner{display:flex;flex-wrap:wrap;align-items:center;gap:6px 14px;margin-bottom:12px;padding:10px 14px;border-radius:10px;
+    background:var(--x-warn-soft);color:var(--x-ink);border:1px solid rgba(245,158,11,.5);font-size:.85rem}
+  .x-forms-banner b{color:var(--x-warn)}
+  .x-forms-banner a{color:var(--x-warn)!important;font-weight:700;text-decoration:underline!important}
+  .x-forms-pill{position:fixed;left:16px;bottom:16px;z-index:1500;padding:8px 14px;border-radius:999px;font-weight:700;font-size:.82rem;
+    background:#f59e0b;color:#111!important;text-decoration:none!important;box-shadow:var(--x-shadow)}
   `;
 
   function boot() {
@@ -244,7 +259,9 @@
       credits: parseInt(td[3].textContent, 10) || 0,
       cat: td[4].textContent.trim(),
       reg: parseInt(reg, 10) || 0,
-      deadline, ppt: when(td[6]), test: when(td[7]), status
+      deadline, ppt: when(td[6]), test: when(td[7]), status,
+      pid: ((roleA && roleA.getAttribute('onclick')) || '').match(/getprofileinfo\('(\d+)'\)/)?.[1] || '',
+      ext: (td[9].querySelector('a[href^="http"]') || {}).href || ''
     };
   }
 
@@ -346,6 +363,7 @@
       const okS = state.status === 'all' ||
                   (state.status === 'actionable' ? (i.status === 'eligible' || i.status === 'applied')   // things you can still act on
                  : state.status === 'applied'    ? (i.status === 'applied' || i.status === 'done')       // every role you applied to
+                 : state.status === 'formpending' ? formPending(i)                                         // registered, external form not marked filled
                  : i.status === state.status);
       const okC = state.cat === 'all' || i.cat === state.cat;
       tr.hidden = !(okQ && okS && okC);
@@ -398,6 +416,7 @@
         <button type="button" class="x-chip" data-s="yet">Yet To Open</button>
         <button type="button" class="x-chip" data-s="closed">Closed</button>
         <button type="button" class="x-chip" data-s="ineligible">Ineligible</button>
+        <button type="button" class="x-chip" data-s="formpending">⚠ Form pending <span id="x-form-count"></span></button>
       </div>
       <div class="x-group">
         <select id="x-cat" class="x-select"></select>
@@ -488,6 +507,8 @@
     fillCategories(table);
     applyView(table);
     const pg = $('ul.pagination'); if (pg) pg.closest('nav').hidden = true;
+    syncForms(table);
+    applyView(table);
     btn.textContent = `✓ All ${n} pages merged`;
   }
 
@@ -592,12 +613,22 @@
    *     We send the same POST with fetch(), then re-read the pages already in the table and swap
    *     the rows in place, so page number, merged pages, filters, sort and scroll all stay put.
    * ------------------------------------------------------------------ */
-  function toast(msg, bad) {
+  // kind: falsy | true/'bad' | 'warn';  actions: [{ label, fn }] keeps the toast up until one is clicked (max 60 s)
+  function toast(msg, kind, actions) {
     const t = document.createElement('div');
-    t.className = 'x-toast' + (bad ? ' bad' : '');
+    t.className = 'x-toast' + (kind === true || kind === 'bad' ? ' bad' : kind === 'warn' ? ' warn' : '');
     t.textContent = msg;
+    if (actions && actions.length) {
+      const row = document.createElement('div'); row.className = 'x-act';
+      actions.forEach(a => {
+        const b = document.createElement('button'); b.type = 'button'; b.className = 'x-chip'; b.textContent = a.label;
+        b.addEventListener('click', () => { t.remove(); a.fn && a.fn(); });
+        row.appendChild(b);
+      });
+      t.appendChild(row);
+    }
     document.body.appendChild(t);
-    setTimeout(() => t.remove(), bad ? 6000 : 3500);
+    setTimeout(() => t.remove(), actions && actions.length ? 60000 : kind ? 6000 : 3500);
   }
 
   // message the portal wants to show after saving (flash alert / bootbox), if any
@@ -634,6 +665,7 @@
     fresh.forEach(tr => tbody.appendChild(tr));
     dataRows(table).forEach(decorate);
     fillCategories(table);
+    syncForms(table);
     applyView(table);                       // same filters + sort as before
     const g = re => parseInt((creditsText.match(re) || [])[1], 10);
     const total = g(/Total Credits\s*:\s*(\d+)/i), used = g(/Used Credits\s*:\s*(\d+)/i), bal = g(/Balance Credits\s*:\s*(\d+)/i);
@@ -659,7 +691,16 @@
       return;
     }
     toast('✓ ' + (flashMessage(text) || 'Saved'));
-    try { await refreshTable(); }
+    const registered = i => i.status === 'applied' || i.status === 'done';
+    const before = new Set(dataRows(mainTable()).map(info).filter(registered).map(i => i.pid));
+    try {
+      await refreshTable();
+      const fresh = dataRows(mainTable()).map(info).filter(i => registered(i) && !before.has(i.pid) && formPending(i));
+      fresh.slice(0, 1).forEach(i => toast(`📝 ${(forms[i.pid] || {}).company || i.company} also needs its external form.`, 'warn', [
+        { label: 'Open form now ↗', fn: () => { markOpened(i.pid); window.open(i.ext, '_blank', 'noopener'); } },
+        { label: 'Later', fn: () => {} }
+      ]));
+    }
     catch (err) { console.error('[x-placement] refresh failed', err); toast('Saved, but the table could not be refreshed — reload to see it.', true); }
   }
 
@@ -677,6 +718,120 @@
   function patchClosemodel() {
     window.closemodel = function () { try { window.jQuery('.modal').modal('hide'); } catch (e) {} };
   }
+
+  /* ------------------------------------------------------------------ *
+   * 5c. External-form reminders
+   *     Registered roles with an External Link get a "Mark filled" toggle; until you tick it the row is
+   *     amber, a banner lists it, the tab title shows the count and other pages show a pill.
+   *     Clicking "Apply ↗" and coming back to the tab asks whether you submitted the form.
+   *     Stored per browser in localStorage['x-iitm-extforms'] as { pid: {company, role, url, deadline,
+   *     registered, done, opened, asked} }, so it also remembers roles on pages you aren't viewing.
+   * ------------------------------------------------------------------ */
+  const FORM_KEY = 'x-iitm-extforms';
+  let forms = {};
+  try { forms = JSON.parse(localStorage.getItem(FORM_KEY)) || {}; } catch (e) {}
+  const saveForms = () => { try { localStorage.setItem(FORM_KEY, JSON.stringify(forms)); } catch (e) {} };
+  const notLongPast = t => !isFinite(t) || !t || t > Date.now() - 864e5;      // ignore roles whose deadline passed >1 day ago
+  const formPending = i => !!(i.pid && i.ext && (i.status === 'applied' || i.status === 'done') && !(forms[i.pid] || {}).done && notLongPast(i.deadline));
+  const markOpened = pid => { if (!pid) return; (forms[pid] = forms[pid] || {}).opened = Date.now(); saveForms(); };
+  let baseTitle = '';                       // read lazily: at document-start <title> isn't parsed yet
+
+  // remember every role with an external link we see, then paint the table
+  function syncForms(table) {
+    if (!table) return;
+    dataRows(table).forEach(tr => {
+      const i = info(tr);
+      if (!i.pid || !i.ext) return;
+      const f = forms[i.pid] = forms[i.pid] || {};
+      const roleEl = tr.children[2].querySelector('.d-none') || tr.children[2].querySelector('a');
+      Object.assign(f, { company: tr.children[1].textContent.trim(), role: roleEl ? roleEl.textContent.trim() : i.role, url: i.ext,
+        deadline: isFinite(i.deadline) ? i.deadline : null, registered: i.status === 'applied' || i.status === 'done' });
+
+      const cell = tr.children[9];
+      let btn = cell.querySelector('.x-form-toggle');
+      if (!btn) {
+        btn = document.createElement('button'); btn.type = 'button'; btn.className = 'x-chip x-form-toggle'; btn.dataset.pid = i.pid;
+        cell.appendChild(btn);
+      }
+      btn.classList.toggle('done', !!f.done);
+      btn.textContent = f.done ? '✓ Form filled' : '☐ Mark form filled';
+      const pending = formPending(i);
+      tr.classList.toggle('x-form-pending', pending);
+      let flag = cell.querySelector('.x-form-flag');
+      if (pending && !flag) { flag = document.createElement('span'); flag.className = 'x-form-flag'; flag.textContent = '⚠ form not filled'; cell.insertBefore(flag, btn); }
+      if (!pending && flag) flag.remove();
+    });
+    saveForms();
+    renderFormReminders();
+  }
+
+  // registered + not filled + deadline not long past, soonest first (covers pages you aren't viewing too)
+  function pendingForms() {
+    return Object.entries(forms)
+      .filter(([, f]) => f.registered && !f.done && f.url && notLongPast(f.deadline))
+      .map(([pid, f]) => ({ pid, ...f }))
+      .sort((a, b) => (a.deadline || Infinity) - (b.deadline || Infinity));
+  }
+
+  function dueText(t) {
+    if (!t) return '';
+    const h = (t - Date.now()) / 36e5;
+    return h < 0 ? ' (deadline passed)' : h <= 24 ? ` (due in ${Math.ceil(h)}h)` : ` (due ${new Date(t).toLocaleDateString(undefined, { day: 'numeric', month: 'short' })})`;
+  }
+
+  function renderFormReminders() {
+    const list = pendingForms();
+    baseTitle = baseTitle || document.title.replace(/^⚠\d+ forms? · /, '');
+    document.title = (list.length ? `⚠${list.length} form${list.length > 1 ? 's' : ''} · ` : '') + baseTitle;
+    const cnt = $('#x-form-count'); if (cnt) cnt.textContent = list.length ? `(${list.length})` : '';
+    const bar = $('#x-bar');
+    let banner = $('#x-forms-banner');
+    if (bar) {                                             // companies page: banner above the command bar
+      if (!list.length) { if (banner) banner.remove(); return; }
+      if (!banner) { banner = document.createElement('div'); banner.id = 'x-forms-banner'; banner.className = 'x-forms-banner'; bar.before(banner); }
+      banner.innerHTML = `<b>⚠ ${list.length} external form${list.length > 1 ? 's' : ''} not filled:</b>` +
+        list.slice(0, 6).map(f => `<a href="${f.url}" target="_blank" rel="noopener" data-pid="${f.pid}">${f.company} — ${f.role}</a>${dueText(f.deadline)}`).join(' · ') +
+        (list.length > 6 ? ` · +${list.length - 6} more` : '') +
+        ` <button type="button" class="x-chip" id="x-forms-show">Show them</button>`;
+    } else {                                               // any other portal page: small floating pill
+      let pill = $('#x-forms-pill');
+      if (!list.length) { if (pill) pill.remove(); return; }
+      if (!pill) { pill = document.createElement('a'); pill.id = 'x-forms-pill'; pill.className = 'x-forms-pill'; pill.href = '/students-all-companies'; document.body.appendChild(pill); }
+      pill.textContent = `⚠ ${list.length} external form${list.length > 1 ? 's' : ''} not filled`;
+      pill.title = list.map(f => `${f.company} — ${f.role}${dueText(f.deadline)}`).join('\n');
+    }
+  }
+
+  // clicks: Apply ↗ / banner links (remember "opened"), the toggle, and "Show them"
+  document.addEventListener('click', e => {
+    const tog = e.target.closest('.x-form-toggle');
+    if (tog) {
+      const f = forms[tog.dataset.pid] = forms[tog.dataset.pid] || {};
+      f.done = !f.done; saveForms(); syncForms(mainTable()); applyView(mainTable());
+      return;
+    }
+    if (e.target.closest('#x-forms-show')) { const chip = $('#x-status [data-s="formpending"]'); if (chip) chip.click(); return; }
+    const a = e.target.closest('a.x-apply, #x-forms-banner a[data-pid]');
+    if (a) {
+      const tr = a.closest('tr');
+      const pid = a.dataset.pid || (tr && tr.children.length >= 11 ? info(tr).pid : '');
+      markOpened(pid);
+    }
+  }, true);
+
+  // back on the tab after opening a form: ask once whether it was submitted
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState !== 'visible') return;
+    const recent = Object.entries(forms).filter(([, f]) => !f.done && f.opened && f.opened > Date.now() - 3 * 36e5 && f.asked !== f.opened)
+      .sort((a, b) => b[1].opened - a[1].opened)[0];
+    if (!recent) return;
+    const [pid, f] = recent;
+    f.asked = f.opened; saveForms();
+    toast(`Did you submit the external form for ${f.company || 'that company'}?`, 'warn', [
+      { label: '✓ Yes, submitted', fn: () => { f.done = true; saveForms(); syncForms(mainTable()); renderFormReminders(); const t = mainTable(); if (t) applyView(t); } },
+      { label: 'Not yet', fn: () => {} }
+    ]);
+  });
 
   /* ------------------------------------------------------------------ *
    * 6. Orchestration
@@ -699,6 +854,8 @@
       fillCategories(table);
       applyView(table);
     }
+    syncForms(table);
+    if (!table) renderFormReminders();
     linkifyCells(table);
     sweepWhitePanels();
     measureNavbar();
