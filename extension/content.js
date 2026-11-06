@@ -268,12 +268,15 @@
     td[3].innerHTML = `<span class="x-pill">${i.credits}</span>`;
     td[4].innerHTML = `<span class="x-cat">${i.cat || 'Other'}</span>`;
 
-    // deadline: keep hidden key span, add "Nh left" / "Tomorrow"
-    const hrs = (i.deadline - Date.now()) / 36e5;
-    const due = hrs > 0 && hrs <= 24 ? `<span class="x-due urgent">⏳ ${Math.ceil(hrs)}h left</span>`
-              : hrs > 24 && hrs <= 48 ? `<span class="x-due">Tomorrow</span>` : '';
-    const keySpan = td[5].querySelector('.d-none');
-    td[5].innerHTML = (keySpan ? keySpan.outerHTML : '') + `<div>${cleanText(td[5])}${due ? '<div>' + due + '</div>' : ''}</div>`;
+    // deadline, PPT, test: keep hidden key span, add "Nh left" / "Tomorrow"
+    [[td[5], i.deadline], [td[6], i.ppt], [td[7], i.test]].forEach(([cell, when]) => {
+      if (!isFinite(when)) return;
+      const hrs = (when - Date.now()) / 36e5;
+      const due = hrs > 0 && hrs <= 24 ? `<span class="x-due urgent">⏳ ${Math.ceil(hrs)}h left</span>`
+                : hrs > 24 && hrs <= 48 ? `<span class="x-due">Tomorrow</span>` : '';
+      const keySpan = cell.querySelector('.d-none');
+      cell.innerHTML = (keySpan ? keySpan.outerHTML : '') + `<div>${cleanText(cell)}${due ? '<div>' + due + '</div>' : ''}</div>`;
+    });
 
     // external + whatsapp links -> buttons
     const ext = td[9].querySelector('a');
@@ -448,18 +451,25 @@
 
   async function loadAllPages(btn) {
     const table = mainTable(); if (!table) return;
-    const urls = Array.from(new Set($$('ul.pagination a.page-link').map(a => a.href).filter(h => /page=\d+/.test(h))));
+    // Long paginations hide middle pages behind "…", so don't fetch only the linked pages:
+    // fetch every page up to the highest number seen (re-checked on each fetched page).
+    const links = r => Array.from(r.querySelectorAll('ul.pagination a.page-link')).map(a => a.href).filter(h => /[?&]page=\d+/.test(h));
+    const lastPage = r => Math.max(0, ...links(r).map(pageOf));
+    const first = links(document)[0];
     btn.disabled = true;
-    if (!urls.length) { btn.textContent = '✓ All pages loaded'; return; }
+    if (!first) { btn.textContent = '✓ All pages loaded'; return; }
+    const urlFor = p => first.replace(/([?&]page=)\d+/, '$1' + p);
     const tbody = table.tBodies[0];
-    let n = 1;
-    for (const url of urls) {
-      btn.textContent = `⏳ Loading page ${++n}…`;
+    let max = lastPage(document), n = loadedPages.size;
+    for (let pageNo = 1; pageNo <= max; pageNo++) {
+      if (loadedPages.has(pageNo)) continue;
+      const url = urlFor(pageNo);
+      btn.textContent = `⏳ Loading page ${pageNo} of ${max}…`;
       try {
         const doc = new DOMParser().parseFromString(await (await fetch(url, { credentials: 'same-origin' })).text(), 'text/html');
         const t = Array.from(doc.querySelectorAll('table.table')).find(x => x.querySelectorAll('thead th').length >= 11);
-        const pageNo = pageOf(url);
-        if (t) loadedPages.add(pageNo);
+        max = Math.max(max, lastPage(doc));
+        if (t) { loadedPages.add(pageNo); n++; }
         if (t) dataRows(t).forEach((tr, k) => {
           const copy = document.importNode(tr, true);
           copy.dataset.xSeq = pageNo * 1000 + k;
