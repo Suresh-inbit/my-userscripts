@@ -182,6 +182,23 @@
   .x-forms-banner a{color:var(--x-warn)!important;font-weight:700;text-decoration:underline!important}
   .x-forms-pill{position:fixed;left:16px;bottom:16px;z-index:1500;padding:8px 14px;border-radius:999px;font-weight:700;font-size:.82rem;
     background:#f59e0b;color:#111!important;text-decoration:none!important;box-shadow:var(--x-shadow)}
+  /* Applied Companies page: tidy status tags + per-role "OA done" checkbox */
+  #x-main.x-applied-page th.x-statcol,#x-main.x-applied-page td.x-statcol{width:1%;white-space:nowrap;text-align:center}
+  #x-main.x-applied-page tbody td:nth-child(2){min-width:200px}
+  #x-main.x-applied-page tbody td:nth-child(3){min-width:240px}
+  .x-st{display:inline-block;min-width:36px;padding:2px 10px;border-radius:99px;font-size:.75rem;font-weight:700;
+    background:var(--x-subtle);color:var(--x-muted);border:1px solid var(--x-border)}
+  .x-st.dash{background:transparent;border-color:transparent}
+  .x-st.ok{background:var(--x-ok-soft);color:var(--x-ok);border-color:#10b981}
+  .x-st.bad{background:rgba(239,68,68,.14);color:#b91c1c;border-color:rgba(239,68,68,.5)}
+  html.x-dark .x-st.bad{color:#f87171}
+  .x-oa{display:flex;width:max-content;align-items:center;gap:6px;margin-top:6px;padding:2px 11px 2px 8px;border-radius:999px;
+    font-size:.72rem;font-weight:700;cursor:pointer;user-select:none;background:var(--x-subtle);color:var(--x-muted);border:1px solid var(--x-border)}
+  .x-oa:hover{border-color:var(--x-accent)}
+  .x-oa input{margin:0;cursor:pointer;accent-color:#10b981}
+  table.table tbody tr.x-oa-done{background:var(--x-ok-soft)!important}
+  table.table tbody tr.x-oa-done td:first-child{border-left:4px solid #10b981!important}
+  tr.x-oa-done .x-oa{background:var(--x-ok-soft);color:var(--x-ok);border-color:#10b981}
   `;
 
   function boot() {
@@ -216,6 +233,12 @@
     return c.textContent.replace(/\s+/g, ' ').trim();
   }
 
+  const nameOf = c => {
+    if (!c.querySelector('.x-oa')) return c.textContent.trim();
+    const k = c.cloneNode(true); k.querySelectorAll('.x-oa').forEach(n => n.remove());
+    return k.textContent.trim();
+  };
+
   function info(tr) {
     const td = tr.children;
     const roleA = td[2].querySelector('a');
@@ -247,7 +270,7 @@
 
     return {
       sl: +tr.dataset.xSeq || parseInt(td[0].textContent, 10) || 0,   // xSeq = page*1000 + position
-      company: td[1].textContent.trim().toLowerCase(),
+      company: nameOf(td[1]).toLowerCase(),
       role: role.toLowerCase(),
       credits: parseInt(td[3].textContent, 10) || 0,
       cat: td[4].textContent.trim(),
@@ -283,6 +306,7 @@
     td[2].insertAdjacentHTML('beforeend', `<div><span class="x-reg" title="Registered count">👥 ${i.reg}</span></div>`);
 
     td[3].innerHTML = `<span class="x-pill">${i.credits}</span>`;
+    if (appliedMode) { decorateApplied(tr, i); return; }     // Applied Companies page: other columns, keep Resume etc. untouched
     td[4].innerHTML = `<span class="x-cat">${i.cat || 'Other'}</span>`;
 
     // deadline, PPT, test: keep hidden key span, add "Nh left" / "Tomorrow"
@@ -330,8 +354,10 @@
   const state = { q: '', status: 'all', cat: 'all', sort: 'sl', dir: 1 };
   const pageOf = u => +((u.match(/[?&]page=(\d+)/) || [])[1]) || 1;
   const loadedPages = new Set([pageOf(location.search)]);   // pages currently merged into the table
-  const DEFAULT_DIR = { sl: 1, company: 1, role: 1, credits: -1, reg: -1, deadline: 1, ppt: 1, test: 1 };
+  const DEFAULT_DIR = { sl: 1, company: 1, role: 1, credits: -1, reg: -1, deadline: 1, ppt: 1, test: 1, oa: 1 };
   const SORTABLE_TH = { 0: 'sl', 1: 'company', 2: 'role', 3: 'credits', 5: 'deadline', 6: 'ppt', 7: 'test' };
+  const APPLIED_SORTABLE = { 0: 'sl', 1: 'company', 2: 'role', 3: 'credits' };   // Applied Companies page has no date columns
+  let sortable = SORTABLE_TH;
 
   function mainTable() {
     return $$('table.table').find(t => {
@@ -348,7 +374,7 @@
   function applyView(table) {
     const rows = dataRows(table);
     const q = state.q.trim().toLowerCase();
-    const items = rows.map(tr => ({ tr, i: info(tr) }));
+    const items = rows.map(tr => { const i = info(tr); i.oa = oaDone(i) ? 1 : 0; return { tr, i }; });
 
     let shown = 0;
     items.forEach(({ tr, i }) => {
@@ -357,6 +383,8 @@
                   (state.status === 'actionable' ? (i.status === 'eligible' || i.status === 'applied')   // things you can still act on
                  : state.status === 'applied'    ? (i.status === 'applied' || i.status === 'done')       // every role you applied to
                  : state.status === 'formpending' ? formPending(i)                                         // registered, external form not marked filled
+                 : state.status === 'oapending' ? !oaDone(i)                                               // Applied Companies page
+                 : state.status === 'oadone'    ? oaDone(i)
                  : i.status === state.status);
       const okC = state.cat === 'all' || i.cat === state.cat;
       tr.hidden = !(okQ && okS && okC);
@@ -375,14 +403,15 @@
 
     // header arrows + dropdown sync
     $$('thead th', table).forEach((th, idx) => {
-      if (SORTABLE_TH[idx]) { th.classList.add('x-sortable'); th.title = 'Click to sort'; }
+      if (sortable[idx]) { th.classList.add('x-sortable'); th.title = 'Click to sort'; }
       const old = th.querySelector('.x-arrow'); if (old) old.remove();
-      if (SORTABLE_TH[idx] === k && (k !== 'sl' || d !== 1)) {
+      if (sortable[idx] === k && (k !== 'sl' || d !== 1)) {
         const s = document.createElement('span'); s.className = 'x-arrow'; s.textContent = d === 1 ? '↑' : '↓'; th.appendChild(s);
       }
     });
     const sel = $('#x-sort'); if (sel) sel.value = `${k}:${d}`;
-    const cnt = $('#x-count'); if (cnt) cnt.textContent = `${shown} / ${rows.length} roles`;
+    const cnt = $('#x-count');
+    if (cnt) cnt.textContent = `${shown} / ${rows.length} roles` + (appliedMode ? ` · OA done ${items.filter(x => x.i.oa).length}` : '');
   }
 
   function fillCategories(table) {
@@ -435,6 +464,25 @@
         <span id="x-count" class="x-count"></span>
       </div>`;
     wrap.parentNode.insertBefore(bar, wrap);
+    if (appliedMode) {            // statuses / categories of the main page mean nothing here
+      $('#x-status').innerHTML = `
+        <button type="button" class="x-chip active" data-s="all">All</button>
+        <button type="button" class="x-chip" data-s="oapending">OA pending</button>
+        <button type="button" class="x-chip" data-s="oadone">OA done ✓</button>`;
+      $('#x-sort').innerHTML = `
+        <option value="sl:1">Sort: Sl No. (default)</option>
+        <option value="sl:-1">Sl No. (high → low)</option>
+        <option value="oa:1">OA pending first</option>
+        <option value="oa:-1">OA done first</option>
+        <option value="company:1">Company (A → Z)</option>
+        <option value="company:-1">Company (Z → A)</option>
+        <option value="role:1">Role (A → Z)</option>
+        <option value="role:-1">Role (Z → A)</option>
+        <option value="credits:1">Credits (low → high)</option>
+        <option value="credits:-1">Credits (high → low)</option>`;
+      $('#x-cat').remove();
+      $('#x-search').placeholder = '🔍 Filter company or role… (press /)';
+    }
 
     const refresh = () => applyView(mainTable());
     $('#x-search').addEventListener('input', e => { state.q = e.target.value; refresh(); });
@@ -443,7 +491,7 @@
       $$('#x-status .x-chip').forEach(c => c.classList.toggle('active', c === b));
       state.status = b.dataset.s; refresh();
     });
-    $('#x-cat').addEventListener('change', e => { state.cat = e.target.value; refresh(); });
+    $('#x-cat')?.addEventListener('change', e => { state.cat = e.target.value; refresh(); });
     $('#x-sort').addEventListener('change', e => {
       const [k, d] = e.target.value.split(':'); state.sort = k; state.dir = +d; refresh();
     });
@@ -461,7 +509,7 @@
     table.dataset.xHead = '1';
     table.addEventListener('click', e => {
       const th = e.target.closest('thead th');
-      const key = th && SORTABLE_TH[th.cellIndex];
+      const key = th && sortable[th.cellIndex];
       if (!key) return;
       if (state.sort === key) state.dir = -state.dir; else { state.sort = key; state.dir = DEFAULT_DIR[key]; }
       applyView(table);
@@ -785,7 +833,7 @@
       banner.innerHTML = `<b>⚠ ${list.length} external form${list.length > 1 ? 's' : ''} not filled:</b>` +
         list.slice(0, 6).map(f => `<a href="${f.url}" target="_blank" rel="noopener" data-pid="${f.pid}">${f.company} — ${f.role}</a>${dueText(f.deadline)}`).join(' · ') +
         (list.length > 6 ? ` · +${list.length - 6} more` : '') +
-        ` <button type="button" class="x-chip" id="x-forms-show">Show them</button>`;
+        (appliedMode ? '' : ` <button type="button" class="x-chip" id="x-forms-show">Show them</button>`);
     } else {                                               // any other portal page: small floating pill
       let pill = $('#x-forms-pill');
       if (!list.length) { if (pill) pill.remove(); return; }
@@ -827,6 +875,55 @@
   });
 
   /* ------------------------------------------------------------------ *
+   * 5d. "Applied Companies" page: tidy status cells + per-role "OA done" checkbox
+   *     Stored per browser in localStorage['x-iitm-oa'] as { profileId: timestamp }.
+   * ------------------------------------------------------------------ */
+  let appliedMode = false;        // set in run() from the table's headers
+  let statCols = [];              // column indexes of Test SL / Attendance / GD SL / Interview SL / Offer / Acceptance
+  const OA_KEY = 'x-iitm-oa';
+  let oa = {};
+  try { oa = JSON.parse(localStorage.getItem(OA_KEY)) || {}; } catch (e) {}
+  const saveOA = () => { try { localStorage.setItem(OA_KEY, JSON.stringify(oa)); } catch (e) {} };
+  const oaId = i => i.pid || `${i.company}|${i.role}`;
+  const oaDone = i => !!oa[oaId(i)];
+
+  function paintOA(tr, on) {
+    tr.classList.toggle('x-oa-done', on);
+    const box = tr.querySelector('.x-oa-box'); if (box) box.checked = on;
+    const txt = tr.querySelector('.x-oa span'); if (txt) txt.textContent = on ? 'OA done ✓' : 'OA done?';
+  }
+
+  function decorateApplied(tr, i) {
+    const td = tr.children;
+    statCols.forEach(ix => {                              // "Yes" / "No" / "-" become tags; links and buttons are left alone
+      const c = td[ix];
+      if (!c || c.querySelector('a,button,input')) return;
+      const raw = c.textContent.replace(/\s+/g, ' ').trim();
+      const kind = !raw || /^[-–—]+$/.test(raw) ? 'dash'
+                 : /^(yes|selected|shortlisted|accepted|offered|attended|present|placed|cleared|passed)\b/i.test(raw) ? 'ok'
+                 : /^(no|rejected|declined|absent|failed|not (selected|shortlisted|attended))\b/i.test(raw) ? 'bad' : '';
+      const tag = document.createElement('span');
+      tag.className = ('x-st ' + kind).trim();
+      tag.textContent = raw || '–';
+      c.textContent = ''; c.appendChild(tag);
+    });
+    const id = oaId(i);
+    const lab = document.createElement('label'); lab.className = 'x-oa'; lab.title = 'Tick once you have completed the online assessment';
+    const box = document.createElement('input'); box.type = 'checkbox'; box.className = 'x-oa-box'; box.dataset.id = id;
+    lab.append(box, document.createElement('span'));
+    td[1].appendChild(lab);
+    paintOA(tr, !!oa[id]);
+  }
+
+  document.addEventListener('change', e => {
+    const box = e.target.closest && e.target.closest('.x-oa-box'); if (!box) return;
+    if (box.checked) oa[box.dataset.id] = Date.now(); else delete oa[box.dataset.id];
+    saveOA();
+    paintOA(box.closest('tr'), box.checked);
+    const t = mainTable(); if (t) applyView(t);           // keeps OA filters / sort / counter in step
+  });
+
+  /* ------------------------------------------------------------------ *
    * 6. Orchestration
    * ------------------------------------------------------------------ */
   function run() {
@@ -840,6 +937,12 @@
     }
     if (table) {
       table.id = 'x-main';
+      const heads = $$('thead th', table).map(th => th.textContent.trim().toLowerCase());
+      appliedMode = heads.some(h => /^(test sl|offer status|acceptance status)/.test(h));
+      statCols = heads.map((h, ix) => /^(test|gd|interview|offer|acceptance)\b/.test(h) ? ix : -1).filter(ix => ix >= 0);
+      sortable = appliedMode ? APPLIED_SORTABLE : SORTABLE_TH;
+      table.classList.toggle('x-applied-page', appliedMode);
+      if (appliedMode) $$('thead th', table).forEach((th, ix) => th.classList.toggle('x-statcol', statCols.includes(ix)));
       buildToolbar(table);
       const curPage = +((location.search.match(/page=(\d+)/) || [])[1]) || 1;
       dataRows(table).forEach((tr, k) => { if (!tr.dataset.xSeq) tr.dataset.xSeq = curPage * 1000 + k; decorate(tr); });
