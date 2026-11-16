@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         IITM Placement Portal — Clean Dashboard
 // @namespace    suresh.iitm.placement
-// @version      2.8
+// @version      2.9
 // @description  Flash-free restyle of placement.iitm.ac.in/students*: dark mode, live filters, sortable columns, always-visible buttons, and registering without losing your place.
 // @match        https://placement.iitm.ac.in/students*
 // @run-at       document-start
@@ -203,7 +203,6 @@
     font-size:.72rem;font-weight:700;cursor:pointer;user-select:none;background:var(--x-subtle);color:var(--x-muted);border:1px solid var(--x-border)}
   .x-oa:hover{border-color:var(--x-accent)}
   .x-oa input{margin:0;cursor:pointer;accent-color:#10b981}
-  table.table tbody tr.x-oa-done{background:var(--x-ok-soft)!important}
   table.table tbody tr.x-oa-done td:first-child{border-left:4px solid #10b981!important}
   tr.x-oa-done .x-oa{background:var(--x-ok-soft);color:var(--x-ok);border-color:#10b981}
   `;
@@ -927,7 +926,13 @@
     if (box.checked) oa[box.dataset.id] = Date.now(); else delete oa[box.dataset.id];
     saveOA();
     paintOA(box.closest('tr'), box.checked);
-    const t = mainTable(); if (t) applyView(t);           // keeps OA filters / sort / counter in step
+    const t = mainTable(); if (!t) return;
+    if (state.status === 'oapending' || state.status === 'oadone' || state.sort === 'oa') {
+      const y = window.scrollY; applyView(t); window.scrollTo(0, y);   // the row may need to move / hide
+    } else {                                                           // otherwise don't touch the table (re-ordering rows scrolls the page)
+      const cnt = $('#x-count');
+      if (cnt) cnt.textContent = cnt.textContent.replace(/OA done \d+/, 'OA done ' + dataRows(t).filter(r => oaDone(info(r))).length);
+    }
   });
 
   /* ------------------------------------------------------------------ *
