@@ -1,0 +1,79 @@
+  /* ---- mobile layer (generated into iitm-placement-mobile.js; applies on narrow screens only) ---- */
+  html{-webkit-text-size-adjust:100%}
+  @media(max-width:900px){
+    body{font-size:15px}
+    main.page-wrapper{padding-left:6px!important;padding-right:6px!important}
+    main.page-wrapper .container-fluid{padding-left:6px!important;padding-right:6px!important}
+
+    /* navbar: a single swipeable strip instead of 2-3 wrapped rows */
+    nav.navbar.fixed-top{padding:.3rem .5rem!important;flex-wrap:nowrap!important}
+    nav.navbar .navbar-brand,nav.navbar .navbar-toggler{display:none!important}
+    nav.navbar .navbar-collapse{display:block!important;overflow-x:auto;-webkit-overflow-scrolling:touch;flex-basis:100%}
+    nav.navbar .navbar-nav{flex-direction:row!important;flex-wrap:nowrap!important;width:max-content}
+    nav.navbar .nav-item>a.nav-link,nav.navbar .x-chip{white-space:nowrap;padding:.5rem .85rem!important;font-size:.85rem!important}
+
+    /* command bar: normal flow (a sticky one would eat the screen), chips scroll sideways */
+    .x-bar{position:static;padding:10px;gap:8px}
+    .x-bar .x-search{max-width:none;flex:1 1 100%;font-size:16px;padding:10px 12px}
+    .x-bar .x-group{width:100%}
+    #x-status{flex-wrap:nowrap;overflow-x:auto;padding-bottom:4px;-webkit-overflow-scrolling:touch}
+    #x-status .x-chip{flex:0 0 auto;white-space:nowrap}
+    .x-select,#x-load{flex:1 1 100%;min-width:0;font-size:16px;padding:9px 10px!important}
+    .x-chip{padding:8px 14px!important;font-size:.85rem!important}
+    .x-count{width:100%;margin:0}
+    .x-hud{gap:8px;padding:8px 12px}
+    .x-forms-banner{font-size:.8rem}
+
+    /* tables become cards: one card per row, "LABEL  value" lines, empty cells hidden */
+    .table-responsive{overflow:visible!important;border:0!important}
+    table.x-cards,table.x-cards tbody,table.x-cards tr,table.x-cards td{display:block!important;width:100%!important}
+    table.x-cards thead{display:none!important}
+    table.x-cards{background:transparent!important}
+    table.x-cards tbody tr{position:relative;margin:0 0 12px;padding:6px 0;border:1px solid var(--x-border)!important;border-radius:14px;
+      overflow:hidden;box-shadow:var(--x-shadow)}
+    table.x-cards tbody tr.x-applied,table.x-cards tbody tr.x-oa-done{border-left:5px solid #10b981!important}
+    table.x-cards tbody tr.x-urgent,table.x-cards tbody tr.x-form-pending{border-left:5px solid #f59e0b!important}
+    table.table.x-cards tbody tr.x-done td:first-child{border-left:0!important}
+    table.x-cards tbody td{display:flex!important;justify-content:space-between;align-items:center;gap:12px;
+      min-width:0!important;max-width:none!important;padding:6px 14px!important;border:0!important;text-align:right!important;white-space:normal!important}
+    table.x-cards tbody td::before{content:attr(data-label);flex:0 0 auto;max-width:42%;font-size:.68rem;font-weight:700;
+      text-transform:uppercase;letter-spacing:.05em;color:var(--x-muted);text-align:left}
+    table.x-cards tbody td.x-empty{display:none!important}
+
+    /* main + applied company tables: title block, then details, buttons last */
+    #x-main.x-cards tbody tr{display:flex!important;flex-wrap:wrap}
+    #x-main.x-cards tbody tr[hidden]{display:none!important}
+    #x-main.x-cards tbody td:nth-child(n+2):nth-child(-n+3)::before{display:none}
+    #x-main.x-cards tbody td:nth-child(1){position:absolute;top:10px;right:12px;width:auto!important;padding:0!important;
+      font-size:.72rem;color:var(--x-muted)}
+    #x-main.x-cards tbody td:nth-child(1){gap:0}
+    #x-main.x-cards tbody td:nth-child(1)::before{display:inline;content:"#"}
+    #x-main.x-cards tbody td:nth-child(2){display:block!important;text-align:left!important;padding:12px 44px 2px 14px!important;
+      font-size:1.05rem;font-weight:700}
+    #x-main.x-cards tbody td:nth-child(3){display:block!important;text-align:left!important;padding-top:2px!important;padding-bottom:8px!important}
+    #x-main.x-cards tbody td:nth-child(n+4){width:50%!important;flex-direction:column;align-items:flex-start!important;
+      justify-content:flex-start!important;gap:4px;text-align:left!important}
+    #x-main.x-cards tbody td:nth-child(n+4)::before{max-width:none}
+    #x-main.x-cards tbody td:last-child{width:100%!important;flex-direction:row;justify-content:stretch!important;padding-top:10px!important}
+    #x-main.x-cards tbody td:last-child::before{display:none}
+    #x-main.x-cards tbody td a.x-btn{flex:1 1 auto;justify-content:center;min-height:44px;font-size:.95rem!important}
+    #x-main.x-cards tbody td:nth-child(n+4) a.x-btn{flex:0 0 auto}
+    #x-main.x-cards tbody td:last-child a.x-btn{flex:1 1 auto}
+    #x-main.x-cards tbody td:nth-child(n+4){font-size:.9rem}
+    .x-oa{padding:6px 14px 6px 10px;font-size:.8rem}
+    .x-oa input{width:20px;height:20px}
+    .x-st{font-size:.8rem}
+
+    /* company-profile popup */
+    .modal-dialog{margin:.5rem!important;max-width:calc(100vw - 1rem)!important}
+    .modal-body{padding:.9rem!important}
+    .modal-body .row>[class*=col-]{flex:0 0 100%!important;max-width:100%!important;width:100%!important}
+
+    ul.pagination{flex-wrap:nowrap;overflow-x:auto}
+    .pagination .page-link{padding:10px 14px}
+    .x-toast{left:10px;right:10px;bottom:10px;max-width:none}
+    .x-forms-pill{left:10px;bottom:10px}
+    .x-top{position:fixed;right:12px;bottom:64px;z-index:1400;width:44px;height:44px;border-radius:50%;border:1px solid var(--x-border);
+      background:var(--x-surface);color:var(--x-ink);font-size:1.2rem;font-weight:700;box-shadow:var(--x-shadow);display:none}
+    .x-top.show{display:block}
+  }

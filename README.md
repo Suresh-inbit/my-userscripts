@@ -18,3 +18,9 @@ load it via `chrome://extensions` → Developer mode → **Load unpacked** → p
 
 `extension/content.js` is generated — after editing the userscript, run `extension/build.sh`
 and bump `@version` in the userscript and `version` in `extension/manifest.json` together.
+
+### Phone version
+
+`iitm-placement-mobile.js` is the same dashboard tuned for phones (Tampermonkey on Firefox Android, or Kiwi/Chrome with a userscript manager): tables become cards, the navbar is one swipeable strip, touch targets are bigger and there is a back-to-top button. Install **either** this **or** the desktop script, not both. Ticks/reminders are stored per browser, so they do not sync between phone and laptop.
+
+It is generated: after editing `iitm-placement-enhancer.js` or anything in `mobile/`, run `python3 mobile/build.py`.

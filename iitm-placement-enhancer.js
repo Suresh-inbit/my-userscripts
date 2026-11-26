@@ -205,6 +205,7 @@
   .x-oa input{margin:0;cursor:pointer;accent-color:#10b981}
   table.table tbody tr.x-oa-done td:first-child{border-left:4px solid #10b981!important}
   tr.x-oa-done .x-oa{background:var(--x-ok-soft);color:var(--x-ok);border-color:#10b981}
+  /*__MOBILE_CSS__*/
   `;
 
   function boot() {
@@ -415,6 +416,7 @@
         const s = document.createElement('span'); s.className = 'x-arrow'; s.textContent = d === 1 ? '↑' : '↓'; th.appendChild(s);
       }
     });
+    if (typeof mobileRefresh === 'function') mobileRefresh();
     const sel = $('#x-sort'); if (sel) sel.value = `${k}:${d}`;
     const cnt = $('#x-count');
     if (cnt) cnt.textContent = `${shown} / ${rows.length} roles` + (appliedMode ? ` · OA done ${items.filter(x => x.i.oa).length}` : '');
@@ -935,6 +937,8 @@
     }
   });
 
+  /*__MOBILE_JS__*/
+
   /* ------------------------------------------------------------------ *
    * 6. Orchestration
    * ------------------------------------------------------------------ */
@@ -967,6 +971,7 @@
     linkifyCells(table);
     sweepWhitePanels();
     measureNavbar();
+    if (typeof mobileRefresh === 'function') mobileRefresh();
   }
 
   let started = false;
